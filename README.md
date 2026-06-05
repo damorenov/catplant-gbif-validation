@@ -21,6 +21,8 @@ python validate_gbif.py
 
 El CSV en una carpeta `data` en la raiz del código. Debe incluir al menos estas columnas:
 
+Se acepta UTF-8 con o sin BOM (común en exportaciones desde Excel en Windows).
+
 | Columna | Descripción |
 |---------|-------------|
 | `originalID` | Identificador del registro original |

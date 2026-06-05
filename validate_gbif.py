@@ -219,7 +219,7 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     processed = 0
-    with input_path.open(newline="", encoding="utf-8") as fin, output_path.open(
+    with input_path.open(newline="", encoding="utf-8-sig") as fin, output_path.open(
         "w", newline="", encoding="utf-8"
     ) as fout:
         reader = csv.DictReader(fin)
