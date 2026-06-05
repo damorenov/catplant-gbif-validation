@@ -15,6 +15,3 @@
 *.jpeg binary
 *.gif binary
 *.webp binary
-
-# Data  
-data/
