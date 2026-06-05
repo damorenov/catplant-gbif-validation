@@ -1,6 +1,8 @@
 # catplant-gbif-validation
 
-Valida nombres científicos en el backbone taxonómico de GBIF usando [pygbif](https://www.gbif.org/es/tool/OlyoYyRbKCSCkMKIi4oIT/pygbif-cliente-python-de-gbif) y genera un TSV con taxonomía superior, resultados y estado IUCN cuando aplique.
+Valida nombres científicos en el backbone taxonómico de GBIF (endpoint `species/match` v2) y genera un TSV con taxonomía superior, resultados y estado IUCN cuando aplique.
+
+Usa `requests` directamente en lugar de `pygbif`: al importar, pygbif carga matplotlib/numpy y en servidores con CPU antigua puede provocar **Instrucción ilegal** (binarios compilados con AVX no soportado).
 
 ## Instalación
 
@@ -75,7 +77,7 @@ Si un campo no está presente en la respuesta de la API, la celda queda vacía.
 
 ## Comportamiento
 
-- Se llama a `species.name_backbone(scientificName=...)` por cada fila.
+- Se consulta `GET https://api.gbif.org/v2/species/match?scientificName=...` por cada fila (equivalente a `pygbif.species.name_backbone`).
 - Entre llamadas se espera al menos `API_DELAY_SECONDS`.
 - Errores HTTP transitorios (429, 502, 503, 504), fallos de red y respuestas HTML se reintentan con backoff exponencial.
 - Si la API falla definitivamente, se escribe una fila con campos vacíos (excepto `originalID` y `originalScientificName`) y el error se registra en stderr.

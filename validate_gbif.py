@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate scientific names against the GBIF backbone taxonomy via pygbif."""
+"""Validate scientific names against the GBIF backbone taxonomy."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from pygbif import species
+
+GBIF_SPECIES_MATCH_URL = "https://api.gbif.org/v2/species/match"
 
 TSV_COLUMNS = [
     "originalID",
@@ -149,6 +150,28 @@ def _is_retryable_error(exc: BaseException) -> bool:
     return any(token in message for token in ("429", "502", "503", "504", "timeout"))
 
 
+def _fetch_name_backbone(scientific_name: str) -> dict:
+    response = requests.get(
+        GBIF_SPECIES_MATCH_URL,
+        params={"scientificName": scientific_name},
+        headers={
+            "User-Agent": (
+                f"catplant-gbif-validation requests/{requests.__version__}"
+            ),
+        },
+        timeout=60,
+    )
+    response.raise_for_status()
+    if _looks_like_html(response.text):
+        raise requests.exceptions.RequestException(
+            f"Unexpected HTML response (HTTP {response.status_code})"
+        )
+    data = response.json()
+    if not isinstance(data, dict):
+        raise TypeError(f"Unexpected response type: {type(data).__name__}")
+    return data
+
+
 def call_name_backbone(
     scientific_name: str,
     *,
@@ -160,9 +183,7 @@ def call_name_backbone(
 
     for attempt in range(max_retries + 1):
         try:
-            result = species.name_backbone(scientificName=scientific_name)
-            if not isinstance(result, dict):
-                raise TypeError(f"Unexpected response type: {type(result).__name__}")
+            result = _fetch_name_backbone(scientific_name)
             time.sleep(delay_seconds)
             return result
         except Exception as exc:
