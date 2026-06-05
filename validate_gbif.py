@@ -229,6 +229,7 @@ def main() -> int:
     delay_seconds = _env_float("API_DELAY_SECONDS", 0.5)
     max_retries = _env_int("API_MAX_RETRIES", 3)
     retry_backoff_seconds = _env_float("API_RETRY_BACKOFF_SECONDS", 2.0)
+    progress_every = _env_int("PROGRESS_EVERY", 50)
 
     input_path = Path(input_csv)
     output_path = Path(output_tsv)
@@ -285,8 +286,8 @@ def main() -> int:
             writer.writerow(parse_backbone_response(original_id, scientific_name, data))
             processed += 1
 
-            if processed % 50 == 0:
-                print(f"Processed {processed} names...", file=sys.stderr)
+            if progress_every > 0 and processed % progress_every == 0:
+                print(f"Processed {processed} species...", file=sys.stderr)
 
     print(f"Done. Wrote {processed} API lookups to {output_path}", file=sys.stderr)
     return 0

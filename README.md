@@ -73,15 +73,17 @@ Si un campo no está presente en la respuesta de la API, la celda queda vacía.
 | `OUTPUT_TSV` | Ruta al TSV de salida | `./data/output.tsv` |
 | `API_DELAY_SECONDS` | Pausa entre llamadas a la API en segundos | `0.3` |
 | `API_MAX_RETRIES` | Reintentos ante errores | `3` |
-| `API_RETRY_BACKOFF_SECONDS` | Multiplicador del tiempo de reintento entre errores | `2` |
+| `API_RETRY_BACKOFF_SECONDS` | Multiplicador exponencial del tiempo de reintento entre errores | `2` |
+| `PROGRESS_EVERY` | Cada cuántas especies procesadas se imprime avance en consola (`0` desactiva) | `100` |
 
 ## Comportamiento
 
 - Se consulta `GET https://api.gbif.org/v2/species/match?scientificName=...` por cada fila (equivalente a `pygbif.species.name_backbone`).
 - Entre llamadas se espera al menos `API_DELAY_SECONDS`.
-- Errores HTTP transitorios (429, 502, 503, 504), fallos de red y respuestas HTML se reintentan con backoff exponencial.
+- Errores HTTP transitorios (429, 502, 503, 504), fallos de red y respuestas HTML se reintentan con un multiplicador exponencial de tiempo de reintento.
 - Si la API falla definitivamente, se escribe una fila con campos vacíos (excepto `originalID` y `originalScientificName`) y el error se registra en stderr.
 - La salida se escribe incrementalmente fila a fila.
+- El progreso se reporta en consola cada `PROGRESS_EVERY` especies consultadas (p. ej. `Processed 50 species...`). Al terminar muestra el total: `Done. Wrote N API lookups to ...`.
 
 ## Licencia
 
