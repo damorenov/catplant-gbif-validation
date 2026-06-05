@@ -23,7 +23,9 @@ python validate_gbif.py
 
 El CSV en una carpeta `data` en la raiz del código. Debe incluir al menos estas columnas:
 
-Se acepta UTF-8 con o sin BOM (común en exportaciones desde Excel en Windows).
+Se acepta UTF-8 con o sin BOM (común en exportaciones desde Excel en Windows). Si el archivo viene de Excel en Windows con caracteres especiales (tildes, eñes), usa `INPUT_CSV_ENCODING=cp1252`.
+
+También se detecta automáticamente delimitador `,` o `;` (Excel en español). Puedes forzarlo con `INPUT_CSV_DELIMITER=;`.
 
 | Columna | Descripción |
 |---------|-------------|
@@ -71,6 +73,9 @@ Si un campo no está presente en la respuesta de la API, la celda queda vacía.
 |----------|-------------|---------|
 | `INPUT_CSV` | Ruta al CSV de entrada | `./data/input.csv` |
 | `OUTPUT_TSV` | Ruta al TSV de salida | `./data/output.tsv` |
+| `INPUT_CSV_ENCODING` | Codificación del CSV (`cp1252` para Excel Windows; vacío = autodetectar) | autodetectar |
+| `INPUT_CSV_DELIMITER` | Delimitador del CSV (`;` o `,`; vacío = autodetectar) | autodetectar |
+| `RESUME` | Continuar omitiendo `originalID` ya presentes en el TSV de salida | `false` |
 | `API_DELAY_SECONDS` | Pausa entre llamadas a la API en segundos | `0.3` |
 | `API_MAX_RETRIES` | Reintentos ante errores | `3` |
 | `API_RETRY_BACKOFF_SECONDS` | Multiplicador exponencial del tiempo de reintento entre errores | `2` |
@@ -84,6 +89,19 @@ Si un campo no está presente en la respuesta de la API, la celda queda vacía.
 - Si la API falla definitivamente, se escribe una fila con campos vacíos (excepto `originalID` y `originalScientificName`) y el error se registra en stderr.
 - La salida se escribe incrementalmente fila a fila.
 - El progreso se reporta en consola cada `PROGRESS_EVERY` especies consultadas (p. ej. `Processed 50 species...`). Al terminar muestra el total: `Done. Wrote N API lookups to ...`.
+- Con `RESUME=true` se omiten filas cuyo `originalID` ya está en el TSV y se añade al archivo existente (útil tras un error de codificación o interrupción).
+
+### Retomar tras un error de codificación
+
+Si aparece `UnicodeDecodeError`, la última fila procesada con éxito está al final del TSV de salida (columnas `originalID` y `originalScientificName`). Para continuar:
+
+```bash
+# En .env
+INPUT_CSV_ENCODING=cp1252
+RESUME=true
+```
+
+Luego vuelve a ejecutar `python validate_gbif.py`.
 
 ## Licencia
 

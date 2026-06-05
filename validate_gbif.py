@@ -51,6 +51,8 @@ RANK_MAP = {
 
 RETRYABLE_HTTP_STATUS = {429, 502, 503, 504}
 
+COMMON_CSV_ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
+
 
 def empty_row(original_id: str, scientific_name: str) -> dict[str, str]:
     row = {col: "" for col in TSV_COLUMNS}
@@ -221,6 +223,50 @@ def _env_int(name: str, default: int) -> int:
     return int(raw)
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _detect_csv_delimiter(sample: str) -> str:
+    if sample.count(";") > sample.count(","):
+        return ";"
+    return ","
+
+
+def _file_decodes_as(path: Path, encoding: str, chunk_size: int = 1024 * 1024) -> bool:
+    try:
+        with path.open("rb") as fin:
+            while chunk := fin.read(chunk_size):
+                chunk.decode(encoding)
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def _detect_csv_encoding(path: Path, preferred: str | None) -> str:
+    if preferred:
+        return preferred
+    for encoding in COMMON_CSV_ENCODINGS:
+        if _file_decodes_as(path, encoding):
+            return encoding
+    return "utf-8-sig"
+
+
+def _load_completed_original_ids(output_path: Path) -> set[str]:
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        return set()
+    with output_path.open(newline="", encoding="utf-8") as fin:
+        reader = csv.DictReader(fin, delimiter="\t")
+        return {
+            row["originalID"]
+            for row in reader
+            if row.get("originalID") is not None
+        }
+
+
 def main() -> int:
     load_dotenv()
 
@@ -230,6 +276,9 @@ def main() -> int:
     max_retries = _env_int("API_MAX_RETRIES", 3)
     retry_backoff_seconds = _env_float("API_RETRY_BACKOFF_SECONDS", 2.0)
     progress_every = _env_int("PROGRESS_EVERY", 50)
+    resume = _env_bool("RESUME", False)
+    input_encoding = os.getenv("INPUT_CSV_ENCODING", "").strip() or None
+    input_delimiter = os.getenv("INPUT_CSV_DELIMITER", "").strip() or None
 
     input_path = Path(input_csv)
     output_path = Path(output_tsv)
@@ -240,56 +289,112 @@ def main() -> int:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    processed = 0
-    with input_path.open(newline="", encoding="utf-8-sig") as fin, output_path.open(
-        "w", newline="", encoding="utf-8"
-    ) as fout:
-        reader = csv.DictReader(fin)
-        if reader.fieldnames is None:
-            print("Input CSV has no header row.", file=sys.stderr)
-            return 1
-
-        missing = {"originalID", "scientificName"} - set(reader.fieldnames)
-        if missing:
-            print(
-                f"Input CSV missing required columns: {', '.join(sorted(missing))}",
-                file=sys.stderr,
-            )
-            return 1
-
-        writer = csv.DictWriter(
-            fout,
-            fieldnames=TSV_COLUMNS,
-            delimiter="\t",
-            extrasaction="ignore",
+    csv_encoding = _detect_csv_encoding(input_path, input_encoding)
+    completed_ids = _load_completed_original_ids(output_path) if resume else set()
+    if resume and completed_ids:
+        print(
+            f"Resuming: skipping {len(completed_ids)} originalIDs already in {output_path}",
+            file=sys.stderr,
         )
-        writer.writeheader()
 
-        for row in reader:
-            original_id = row.get("originalID", "")
-            scientific_name = (row.get("scientificName") or "").strip()
+    processed = 0
+    skipped = 0
+    last_written_id = ""
+    last_written_name = ""
 
-            if not scientific_name:
+    output_exists = output_path.is_file() and output_path.stat().st_size > 0
+    output_mode = "a" if resume and output_exists else "w"
+
+    try:
+        with input_path.open(newline="", encoding=csv_encoding) as fin, output_path.open(
+            output_mode, newline="", encoding="utf-8"
+        ) as fout:
+            header_line = fin.readline()
+            if not header_line:
+                print("Input CSV has no header row.", file=sys.stderr)
+                return 1
+
+            delimiter = input_delimiter or _detect_csv_delimiter(header_line)
+            fin.seek(0)
+            reader = csv.DictReader(fin, delimiter=delimiter)
+            if reader.fieldnames is None:
+                print("Input CSV has no header row.", file=sys.stderr)
+                return 1
+
+            missing = {"originalID", "scientificName"} - set(reader.fieldnames)
+            if missing:
                 print(
-                    f"Skipping empty scientificName for originalID={original_id!r}",
+                    f"Input CSV missing required columns: {', '.join(sorted(missing))}",
                     file=sys.stderr,
                 )
-                writer.writerow(empty_row(original_id, ""))
-                continue
+                return 1
 
-            data = call_name_backbone(
-                scientific_name,
-                max_retries=max_retries,
-                retry_backoff_seconds=retry_backoff_seconds,
-                delay_seconds=delay_seconds,
+            writer = csv.DictWriter(
+                fout,
+                fieldnames=TSV_COLUMNS,
+                delimiter="\t",
+                extrasaction="ignore",
             )
-            writer.writerow(parse_backbone_response(original_id, scientific_name, data))
-            processed += 1
+            if output_mode == "w":
+                writer.writeheader()
 
-            if progress_every > 0 and processed % progress_every == 0:
-                print(f"Processed {processed} species...", file=sys.stderr)
+            for row in reader:
+                original_id = row.get("originalID", "")
+                scientific_name = (row.get("scientificName") or "").strip()
 
-    print(f"Done. Wrote {processed} API lookups to {output_path}", file=sys.stderr)
+                if resume and original_id in completed_ids:
+                    skipped += 1
+                    continue
+
+                if not scientific_name:
+                    print(
+                        f"Skipping empty scientificName for originalID={original_id!r}",
+                        file=sys.stderr,
+                    )
+                    writer.writerow(empty_row(original_id, ""))
+                    last_written_id = original_id
+                    last_written_name = ""
+                    continue
+
+                data = call_name_backbone(
+                    scientific_name,
+                    max_retries=max_retries,
+                    retry_backoff_seconds=retry_backoff_seconds,
+                    delay_seconds=delay_seconds,
+                )
+                writer.writerow(
+                    parse_backbone_response(original_id, scientific_name, data)
+                )
+                last_written_id = original_id
+                last_written_name = scientific_name
+                processed += 1
+
+                if progress_every > 0 and processed % progress_every == 0:
+                    print(f"Processed {processed} species...", file=sys.stderr)
+
+    except UnicodeDecodeError as exc:
+        print(
+            f"Encoding error reading CSV ({csv_encoding!r}): {exc}",
+            file=sys.stderr,
+        )
+        if last_written_id:
+            print(
+                f"Last successful row: originalID={last_written_id!r}, "
+                f"scientificName={last_written_name!r}",
+                file=sys.stderr,
+            )
+        print(
+            "Try INPUT_CSV_ENCODING=cp1252 (common for Excel on Windows) "
+            "and RESUME=true to continue.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"Done. Wrote {processed} API lookups to {output_path}"
+        + (f" (skipped {skipped} already completed)" if skipped else ""),
+        file=sys.stderr,
+    )
     return 0
 
 
