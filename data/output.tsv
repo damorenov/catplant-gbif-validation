@@ -1,0 +1,4 @@
+originalID	originalScientificName	matchType	usageKey	usageName	usageCanonicalName	usageAuthorship	usageRank	usageStatus	synonym	acceptedUsageKey	acceptedUsageCanonicalName	acceptedUsageAuthorship	acceptedUsageRank	kingdom	phylum	class	order	family	genus	datasetAlias	status	statusCode
+1	Persea americana	EXACT	3034046	Persea americana Mill.	Persea americana	Mill.	SPECIES	ACCEPTED	false					Plantae	Tracheophyta	Magnoliopsida	Laurales	Lauraceae	Persea	IUCN	VULNERABLE	VU
+2	Tibouchina lepidota	EXACT	3861855	Tibouchina lepidota (Bonpl.) Baill.	Tibouchina lepidota	(Bonpl.) Baill.	SPECIES	SYNONYM	true	10767444	Andesanthus lepidotus	(Humb. & Bonpl.) P.J.F.Guim. & Michelang.	SPECIES	Plantae	Tracheophyta	Magnoliopsida	Myrtales	Melastomataceae	Andesanthus			
+3	ZZZnonexistentname123	NONE							false													
